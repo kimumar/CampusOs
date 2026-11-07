@@ -40,3 +40,9 @@ Thumbs.db
 # Temporary files
 *.log
 *.tmp
+
+# Local databases and application data (do not commit)
+*.db
+*.sqlite
+*.sqlite3
+*.hive
