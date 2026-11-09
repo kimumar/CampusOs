@@ -1,8 +1,11 @@
+import '../services/cloud_sync.dart';
 import 'package:flutter/material.dart';
 
 import '../models/campus_course.dart';
 import '../services/course_storage.dart';
+import '../widgets/campus_course_card.dart';
 import '../widgets/campus_dialog.dart';
+import '../widgets/campus_empty_state.dart';
 import '../widgets/campus_form_sheet.dart';
 import '../widgets/campus_responsive.dart';
 
@@ -31,13 +34,12 @@ class _CoursesScreenState extends State<CoursesScreen> {
     });
   }
 
-  int get _totalUnits => _courses.fold<int>(
-        0,
-        (total, course) => total + course.units,
-      );
+  int get _totalUnits =>
+      _courses.fold<int>(0, (total, course) => total + course.units);
 
   List<CampusCourse> get _visibleCourses {
     final query = _search.trim().toLowerCase();
+
     return _courses.where((course) {
       return course.code.toLowerCase().contains(query) ||
           course.title.toLowerCase().contains(query);
@@ -46,6 +48,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
   void _message(String message) {
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -57,9 +60,11 @@ class _CoursesScreenState extends State<CoursesScreen> {
     final codeController = TextEditingController(
       text: existing?.code ?? '',
     );
+
     final titleController = TextEditingController(
       text: existing?.title ?? '',
     );
+
     final formKey = GlobalKey<FormState>();
 
     int units = existing?.units ?? 3;
@@ -73,6 +78,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
             builder: (context, updateSheet) {
               Future<void> save() async {
                 if (saving) return;
+
                 if (formKey.currentState?.validate() != true) {
                   return;
                 }
@@ -80,6 +86,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 updateSheet(() => saving = true);
 
                 final now = DateTime.now().toUtc();
+
                 final course = CampusCourse(
                   id: existing?.id ??
                       now.microsecondsSinceEpoch.toString(),
@@ -94,7 +101,10 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
                 try {
                   await CourseStorage.saveCourse(course);
+                  CloudSync.queueSync();
+
                   if (!mounted) return;
+
                   _refresh();
 
                   if (sheetContext.mounted) {
@@ -102,6 +112,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                   }
                 } catch (_) {
                   _message('Unable to save course. Try again.');
+
                   if (sheetContext.mounted) {
                     updateSheet(() => saving = false);
                   }
@@ -138,15 +149,18 @@ class _CoursesScreenState extends State<CoursesScreen> {
                         validator: (value) {
                           final code =
                               value?.trim().toUpperCase() ?? '';
+
                           if (code.isEmpty) {
                             return 'Enter a course code';
                           }
+
                           if (CourseStorage.courseCodeExists(
                             code,
                             excludeId: existing?.id,
                           )) {
                             return 'This course already exists';
                           }
+
                           return null;
                         },
                       ),
@@ -169,6 +183,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                               value.trim().isEmpty) {
                             return 'Enter a course title';
                           }
+
                           return null;
                         },
                       ),
@@ -183,7 +198,8 @@ class _CoursesScreenState extends State<CoursesScreen> {
                         ),
                         items: List.generate(10, (index) {
                           final number = index + 1;
-                          return DropdownMenuItem(
+
+                          return DropdownMenuItem<int>(
                             value: number,
                             child: Text(
                               '$number ${number == 1 ? "unit" : "units"}',
@@ -194,7 +210,9 @@ class _CoursesScreenState extends State<CoursesScreen> {
                             ? null
                             : (value) {
                                 if (value != null) {
-                                  updateSheet(() => units = value);
+                                  updateSheet(
+                                    () => units = value,
+                                  );
                                 }
                               },
                       ),
@@ -210,6 +228,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
       await Future<void>.delayed(
         const Duration(milliseconds: 400),
       );
+
       codeController.dispose();
       titleController.dispose();
     }
@@ -234,7 +253,10 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
     try {
       await CourseStorage.deleteCourse(course);
+      CloudSync.queueSync();
+
       if (!mounted) return;
+
       _refresh();
       _message('${course.code} removed');
     } catch (_) {
@@ -255,7 +277,9 @@ class _CoursesScreenState extends State<CoursesScreen> {
       appBar: AppBar(
         title: const Text(
           'My Courses',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -320,7 +344,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
               ),
               const SizedBox(height: 22),
               if (_courses.isEmpty)
-                _emptyState(theme)
+                _emptyState(context)
               else if (_visibleCourses.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(30),
@@ -332,7 +356,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 )
               else
                 ..._visibleCourses.map(
-                  (course) => _courseCard(course, theme),
+                  (course) => _courseCard(course),
                 ),
             ],
           ),
@@ -341,121 +365,25 @@ class _CoursesScreenState extends State<CoursesScreen> {
     );
   }
 
-  Widget _emptyState(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 25,
-        vertical: 48,
-      ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.library_books_outlined,
-            color: theme.colorScheme.primary,
-            size: 58,
-          ),
-          const SizedBox(height: 17),
-          Text(
-            'Your courses start here',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleLarge,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Add your semester courses to organize '
-            'lectures, notes, and revision.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _busy ? null : () => _editCourse(),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add your first course'),
-          ),
-        ],
-      ),
+  Widget _emptyState(BuildContext context) {
+    return CampusEmptyState(
+      icon: Icons.library_books_outlined,
+      title: 'Your courses start here',
+      message:
+          'Add your semester courses to organize '
+          'lectures, notes, and revision.',
+      action: _busy ? null : () => _editCourse(),
+      actionLabel: 'Add your first course',
     );
   }
 
-  Widget _courseCard(
-    CampusCourse course,
-    ThemeData theme,
-  ) {
-    final colors = theme.colorScheme;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                color: colors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(
-                Icons.auto_stories_rounded,
-                color: colors.primary,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    course.code,
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    course.title,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${course.units} credit units',
-                    style: TextStyle(
-                      color: colors.primary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'Course options',
-              enabled: !_busy,
-              onSelected: (value) {
-                if (value == 'edit') {
-                  _editCourse(existing: course);
-                } else if (value == 'delete') {
-                  _deleteCourse(course);
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'edit',
-                  child: Text('Edit'),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: Text('Delete'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+  Widget _courseCard(CampusCourse course) {
+    return CampusCourseCard(
+      course: course,
+      onTap: () => _editCourse(existing: course),
+      onEdit: () => _editCourse(existing: course),
+      onDelete: () => _deleteCourse(course),
+      busy: _busy,
     );
   }
 }

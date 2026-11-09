@@ -1,10 +1,13 @@
+import '../services/cloud_sync.dart';
 import 'package:flutter/material.dart';
 
 import '../models/campus_course.dart';
 import '../models/lecture_session.dart';
 import '../services/course_storage.dart';
 import '../services/lecture_storage.dart';
+import '../widgets/campus_empty_state.dart';
 import '../widgets/campus_form_sheet.dart';
+import '../widgets/campus_lecture_card.dart';
 import 'courses_screen.dart';
 
 class LectureTimetableScreen extends StatefulWidget {
@@ -80,9 +83,7 @@ class _LectureTimetableScreenState
     final hour = minute ~/ 60;
     final min = minute % 60;
     final period = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour % 12 == 0
-        ? 12
-        : hour % 12;
+    final displayHour = hour % 12 == 0 ? 12 : hour % 12;
 
     return '$displayHour:'
         '${min.toString().padLeft(2, '0')} $period';
@@ -103,7 +104,9 @@ class _LectureTimetableScreenState
       ),
     );
 
-    if (mounted) _refresh();
+    if (mounted) {
+      _refresh();
+    }
   }
 
   Future<void> _editLecture({
@@ -111,17 +114,13 @@ class _LectureTimetableScreenState
   }) async {
     if (_busy) return;
 
-    // Always reload the shared course list.
     _refresh();
 
-    bool manual = existing?.isManual ??
-        _courses.isEmpty;
-
-    String courseId =
-        existing?.courseId ?? '';
+    bool manual = existing?.isManual ?? _courses.isEmpty;
+    String courseId = existing?.courseId ?? '';
 
     if (!manual &&
-        !_courses.any((c) => c.id == courseId)) {
+        !_courses.any((course) => course.id == courseId)) {
       courseId = _courses.isNotEmpty
           ? _courses.first.id
           : '';
@@ -172,8 +171,7 @@ class _LectureTimetableScreenState
               ) async {
                 final selected = await showTimePicker(
                   context: context,
-                  initialTime:
-                      chooseStart ? start : end,
+                  initialTime: chooseStart ? start : end,
                 );
 
                 if (selected == null ||
@@ -193,9 +191,8 @@ class _LectureTimetableScreenState
               Future<void> save() async {
                 if (saving) return;
 
-                final code = codeController.text
-                    .trim()
-                    .toUpperCase();
+                final code =
+                    codeController.text.trim().toUpperCase();
 
                 if (manual && code.isEmpty) {
                   _message('Enter a course code.');
@@ -209,6 +206,7 @@ class _LectureTimetableScreenState
 
                 final startMinute =
                     start.hour * 60 + start.minute;
+
                 final endMinute =
                     end.hour * 60 + end.minute;
 
@@ -223,11 +221,9 @@ class _LectureTimetableScreenState
 
                 final candidate = LectureSession(
                   id: existing?.id ??
-                      now.microsecondsSinceEpoch
-                          .toString(),
+                      now.microsecondsSinceEpoch.toString(),
                   courseId: manual ? '' : courseId,
-                  manualCourseCode:
-                      manual ? code : '',
+                  manualCourseCode: manual ? code : '',
                   manualCourseTitle: manual
                       ? titleController.text.trim()
                       : '',
@@ -235,20 +231,15 @@ class _LectureTimetableScreenState
                   startMinute: startMinute,
                   endMinute: endMinute,
                   venue: venueController.text.trim(),
-                  lecturer:
-                      lecturerController.text.trim(),
-                  createdAt:
-                      existing?.createdAt ?? now,
+                  lecturer: lecturerController.text.trim(),
+                  createdAt: existing?.createdAt ?? now,
                   updatedAt: now,
                   isDeleted: false,
-                  syncVersion:
-                      existing?.syncVersion ?? 0,
+                  syncVersion: existing?.syncVersion ?? 0,
                 );
 
                 final conflict =
-                    LectureStorage.findConflict(
-                  candidate,
-                );
+                    LectureStorage.findConflict(candidate);
 
                 if (conflict != null) {
                   _message(
@@ -265,6 +256,7 @@ class _LectureTimetableScreenState
                   await LectureStorage.saveLecture(
                     candidate,
                   );
+                  CloudSync.queueSync();
 
                   if (!mounted) return;
 
@@ -279,9 +271,7 @@ class _LectureTimetableScreenState
                     Navigator.pop(sheetContext);
                   }
                 } catch (_) {
-                  _message(
-                    'Could not save lecture.',
-                  );
+                  _message('Could not save lecture.');
 
                   if (sheetContext.mounted) {
                     updateSheet(() => saving = false);
@@ -308,7 +298,8 @@ class _LectureTimetableScreenState
                     Text(
                       'How would you like to add your course?',
                       style: Theme.of(context)
-                          .textTheme.titleSmall,
+                          .textTheme
+                          .titleSmall,
                     ),
                     const SizedBox(height: 12),
                     SegmentedButton<bool>(
@@ -336,7 +327,6 @@ class _LectureTimetableScreenState
                             },
                     ),
                     const SizedBox(height: 18),
-
                     if (!manual) ...[
                       if (_courses.isEmpty)
                         Column(
@@ -350,10 +340,9 @@ class _LectureTimetableScreenState
                               onPressed: saving
                                   ? null
                                   : () async {
-                                      // Close the form before
-                                      // navigating to Course
-                                      // Management.
-                                      Navigator.pop(sheetContext);
+                                      Navigator.pop(
+                                        sheetContext,
+                                      );
                                       await _openCourses();
                                     },
                               icon: const Icon(
@@ -380,11 +369,10 @@ class _LectureTimetableScreenState
                             ),
                           ),
                           items: _courses.map((course) {
-                            return DropdownMenuItem(
+                            return DropdownMenuItem<String>(
                               value: course.id,
                               child: Text(
-                                '${course.code} — '
-                                '${course.title}',
+                                '${course.code} — ${course.title}',
                                 overflow:
                                     TextOverflow.ellipsis,
                               ),
@@ -437,10 +425,10 @@ class _LectureTimetableScreenState
                         'automatically be registered '
                         'in Course Management.',
                         style: Theme.of(context)
-                            .textTheme.bodySmall,
+                            .textTheme
+                            .bodySmall,
                       ),
                     ],
-
                     const SizedBox(height: 18),
                     DropdownButtonFormField<int>(
                       key: ValueKey(
@@ -456,7 +444,7 @@ class _LectureTimetableScreenState
                       ),
                       items: List.generate(
                         7,
-                        (index) => DropdownMenuItem(
+                        (index) => DropdownMenuItem<int>(
                           value: index + 1,
                           child: Text(_days[index]),
                         ),
@@ -540,8 +528,7 @@ class _LectureTimetableScreenState
                       enabled: !saving,
                       maxLength: 100,
                       decoration: const InputDecoration(
-                        labelText:
-                            'Lecturer (optional)',
+                        labelText: 'Lecturer (optional)',
                         hintText: 'Dr. Ade',
                         prefixIcon: Icon(
                           Icons.person_outline_rounded,
@@ -601,6 +588,8 @@ class _LectureTimetableScreenState
 
     try {
       await LectureStorage.deleteLecture(lecture);
+      CloudSync.queueSync();
+
       if (!mounted) return;
 
       _refresh();
@@ -615,89 +604,37 @@ class _LectureTimetableScreenState
   }
 
   Widget _lectureCard(LectureSession lecture) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Icon(
-              lecture.isManual
-                  ? Icons.edit_note_rounded
-                  : Icons.school_rounded,
-              color: colors.primary,
-              size: 30,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _courseCode(lecture),
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(_courseTitle(lecture)),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_time(lecture.startMinute)}'
-                    ' – ${_time(lecture.endMinute)}',
-                    style: TextStyle(
-                      color: colors.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (_showAll)
-                    Text(_days[lecture.day - 1]),
-                  if (lecture.venue.isNotEmpty)
-                    Text('Venue: ${lecture.venue}'),
-                  if (lecture.lecturer.isNotEmpty)
-                    Text(
-                      'Lecturer: ${lecture.lecturer}',
-                    ),
-                  if (lecture.isManual)
-                    Padding(
-                      padding:
-                          const EdgeInsets.only(top: 6),
-                      child: Text(
-                        'Independent entry',
-                        style:
-                            theme.textTheme.bodySmall,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            PopupMenuButton<String>(
-              enabled: !_busy,
-              onSelected: (value) {
-                if (value == 'edit') {
-                  _editLecture(existing: lecture);
-                } else if (value == 'delete') {
-                  _deleteLecture(lecture);
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'edit',
-                  child: Text('Edit'),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: Text('Remove'),
-                ),
-              ],
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CampusLectureCard(
+          lecture: lecture,
+          courseCode: _courseCode(lecture),
+          courseTitle: _courseTitle(lecture),
+          onTap: _busy
+              ? null
+              : () => _editLecture(existing: lecture),
+          busy: _busy,
         ),
-      ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _busy
+                ? null
+                : () => _deleteLecture(lecture),
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              size: 18,
+            ),
+            label: const Text('Remove lecture'),
+            style: TextButton.styleFrom(
+              foregroundColor:
+                  Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 
@@ -735,8 +672,9 @@ class _LectureTimetableScreenState
       ),
       floatingActionButton:
           FloatingActionButton.extended(
-        onPressed:
-            _busy ? null : () => _editLecture(),
+        onPressed: _busy
+            ? null
+            : () => _editLecture(),
         icon: const Icon(Icons.add_rounded),
         label: const Text('Add lecture'),
       ),
@@ -746,15 +684,17 @@ class _LectureTimetableScreenState
               const BoxConstraints(maxWidth: 850),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-              18, 18, 18, 110,
+              18,
+              18,
+              18,
+              110,
             ),
             children: [
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: colors.primary.withValues(
-                    alpha: 0.11,
-                  ),
+                  color: colors.primary
+                      .withValues(alpha: 0.11),
                   borderRadius:
                       BorderRadius.circular(22),
                 ),
@@ -829,8 +769,10 @@ class _LectureTimetableScreenState
                           ),
                           child: ChoiceChip(
                             label: Text(
-                              _days[index]
-                                  .substring(0, 3),
+                              _days[index].substring(
+                                0,
+                                3,
+                              ),
                             ),
                             selected:
                                 day == _selectedDay,
@@ -855,43 +797,18 @@ class _LectureTimetableScreenState
               ),
               const SizedBox(height: 14),
               if (visible.isEmpty)
-                Card(
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.all(30),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.event_note_rounded,
-                          size: 48,
-                          color: colors.primary,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No lectures scheduled',
-                          style:
-                              theme.textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Select a registered course '
-                          'or enter one manually.',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 18),
-                        FilledButton.icon(
-                          onPressed:
-                              () => _editLecture(),
-                          icon: const Icon(
-                            Icons.add_rounded,
-                          ),
-                          label: const Text(
-                            'Add lecture',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                CampusEmptyState(
+                  icon:
+                      Icons.event_note_rounded,
+                  title:
+                      'No lectures scheduled',
+                  message:
+                      'Select a registered course '
+                      'or enter one manually.',
+                  action: _busy
+                      ? null
+                      : () => _editLecture(),
+                  actionLabel: 'Add lecture',
                 )
               else
                 ...visible.map(_lectureCard),

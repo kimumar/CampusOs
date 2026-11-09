@@ -24,17 +24,17 @@ class CampusTheme {
 
   static ThemeData get dark => _build(
         brightness: Brightness.dark,
-        background: const Color(0xFF151722),
-        surface: const Color(0xFF252839),
-        text: const Color(0xFFF2F1F7),
-        secondaryText: const Color(0xFFCBC9D6),
-        accent: const Color(0xFFB7A9FF),
+        background: const Color(0xFF141321),
+        surface: const Color(0xFF242239),
+        text: const Color(0xFFF7F4FF),
+        secondaryText: const Color(0xFFBBB5D0),
+        accent: const Color(0xFFC4A2FF),
       );
 
   static ThemeData get nightComfort => _build(
         brightness: Brightness.dark,
-        background: const Color(0xFF201E2C),
-        surface: const Color(0xFF302D3C),
+        background: const Color(0xFF1C1928),
+        surface: const Color(0xFF2A2638),
         text: const Color(0xFFF0E8E2),
         secondaryText: const Color(0xFFD1C6CF),
         accent: const Color(0xFFC3B3F2),
@@ -119,11 +119,8 @@ class CampusTheme {
       scaffoldBackgroundColor: background,
       canvasColor: background,
       textTheme: textTheme,
-
       visualDensity: VisualDensity.standard,
-
-      materialTapTargetSize:
-          MaterialTapTargetSize.padded,
+      materialTapTargetSize: MaterialTapTargetSize.padded,
 
       appBarTheme: AppBarTheme(
         backgroundColor: background,

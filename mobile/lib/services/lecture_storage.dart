@@ -1,4 +1,6 @@
+import 'cloud_sync.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'account_scope.dart';
 
 import '../models/lecture_session.dart';
 
@@ -27,10 +29,21 @@ class LectureStorage {
     return box;
   }
 
+  static List<LectureSession> allForSync() {
+    final result = <LectureSession>[];
+    for (final entry in _database.toMap().entries) {
+      if (!AccountScope.owns(entry.key) || entry.value is! Map) continue;
+      try { result.add(LectureSession.fromMap(Map<String, dynamic>.from(entry.value as Map))); } catch (_) {}
+    }
+    return result;
+  }
+
   static List<LectureSession> getLectures() {
     final lectures = <LectureSession>[];
 
-    for (final value in _database.values) {
+    for (final entry in _database.toMap().entries) {
+      if (!AccountScope.owns(entry.key)) continue;
+      final value = entry.value;
       if (value is! Map) continue;
 
       try {
@@ -82,7 +95,8 @@ class LectureStorage {
       );
     }
 
-    await _database.put(lecture.id, lecture.toMap());
+    await _database.put(AccountScope.key(lecture.id), lecture.toMap());
+    CloudSync.queueSync();
   }
 
   static Future<void> deleteLecture(
@@ -93,7 +107,8 @@ class LectureStorage {
       updatedAt: DateTime.now().toUtc(),
     );
 
-    await _database.put(deleted.id, deleted.toMap());
+    await _database.put(AccountScope.key(deleted.id), deleted.toMap());
+    CloudSync.queueSync();
   }
 
   static LectureSession? findConflict(

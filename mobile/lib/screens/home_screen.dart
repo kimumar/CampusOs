@@ -1,99 +1,91 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../main.dart';
+import '../services/course_storage.dart';
+import '../services/lecture_storage.dart';
 import 'courses_screen.dart';
 import 'lecture_timetable_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.appearance,
     required this.onAppearanceChanged,
+    required this.onLogout,
   });
 
   final CampusAppearance appearance;
   final ValueChanged<CampusAppearance> onAppearanceChanged;
+  final Future<void> Function() onLogout;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _animation;
+class _HomeScreenState extends State<HomeScreen> {
+  static const Color violet = Color(0xFF9463F5);
+  static const Color mint = Color(0xFFA8F0D0);
 
-  final List<String> _missions = [
+  static const List<String> missions = [
     'Review yesterday\'s notes',
     'Practice 10 recall questions',
     'Complete a 25-minute study session',
   ];
 
-  final Set<int> _completed = {};
-  int _period = 0;
+  final Set<int> completed = {};
 
-  double get _progress => _completed.length / _missions.length;
-  Color get _ink => Theme.of(context).colorScheme.onSurface;
-  Color get _muted =>
-      Theme.of(context).colorScheme.onSurfaceVariant;
-  Color get _accent => Theme.of(context).colorScheme.primary;
-  Color get _surface => Theme.of(context).colorScheme.surface;
-  bool get _dark =>
-      Theme.of(context).brightness == Brightness.dark;
-  Color get _soft => _dark
-      ? const Color(0xFF3B3749)
-      : const Color(0xFFF3F1FA);
+  int courseCount = 0;
+  int totalUnits = 0;
+  int lectureCount = 0;
+  int selectedPeriod = 0;
+
+  bool get isDark => Theme.of(context).brightness == Brightness.dark;
+
+  Color get foreground => Theme.of(context).colorScheme.onSurface;
+
+  Color get muted => Theme.of(context).colorScheme.onSurfaceVariant;
+
+  Color get accent => Theme.of(context).colorScheme.primary;
+
+  Color get panel => isDark ? const Color(0xFF242239) : Colors.white;
+
+  Color get subtle =>
+      isDark ? const Color(0xFF34304A) : const Color(0xFFF0EDFA);
 
   @override
   void initState() {
     super.initState();
-    _animation = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat(reverse: true);
+    refreshSummary();
   }
 
-  @override
-  void dispose() {
-    _animation.dispose();
-    super.dispose();
+  void refreshSummary() {
+    if (!mounted) return;
+
+    setState(() {
+      courseCount = CourseStorage.courseCount;
+      totalUnits = CourseStorage.totalUnits;
+      lectureCount = LectureStorage.getLectures().length;
+    });
   }
 
-  void _open(Widget screen) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => screen,
-      ),
-    );
+  Future<void> openScreen(Widget screen) async {
+    await Navigator.of(context)
+        .push<void>(MaterialPageRoute<void>(builder: (_) => screen));
+
+    refreshSummary();
   }
 
-  void _comingSoon(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature is coming soon'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  void comingSoon(String feature) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('$feature is coming soon')));
   }
 
-  void _appearanceSheet() {
-    final options = [
-      (
-        CampusAppearance.system,
-        Icons.brightness_auto_rounded,
-        'Follow device',
-      ),
-      (
-        CampusAppearance.light,
-        Icons.light_mode_rounded,
-        'Light',
-      ),
-      (
-        CampusAppearance.dark,
-        Icons.dark_mode_rounded,
-        'Dark',
-      ),
+  void showAppearance() {
+    final options = <(CampusAppearance, IconData, String)>[
+      (CampusAppearance.system, Icons.brightness_auto_rounded, 'Follow device'),
+      (CampusAppearance.light, Icons.light_mode_rounded, 'Light'),
+      (CampusAppearance.dark, Icons.dark_mode_rounded, 'Dark'),
       (
         CampusAppearance.nightComfort,
         Icons.nights_stay_rounded,
@@ -104,33 +96,31 @@ class _HomeScreenState extends State<HomeScreen>
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.8,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
               children: [
                 Text(
                   'Appearance',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineMedium,
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
                 ...options.map(
                   (option) => ListTile(
-                    leading: Icon(option.$2, color: _accent),
+                    leading: Icon(option.$2, color: accent),
                     title: Text(option.$3),
                     trailing: widget.appearance == option.$1
-                        ? Icon(
-                            Icons.check_circle_rounded,
-                            color: _accent,
-                          )
+                        ? Icon(Icons.check_circle_rounded, color: accent)
                         : null,
                     onTap: () {
-                      Navigator.pop(sheetContext);
+                      Navigator.of(sheetContext).pop();
                       widget.onAppearanceChanged(option.$1);
                     },
                   ),
@@ -143,128 +133,125 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _card(Widget child) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(23),
-        border: Border.all(
-          color: _dark
-              ? Colors.white.withValues(alpha: 0.07)
-              : const Color(0xFFEFEAF8),
-        ),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _heading(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        color: _ink,
-        fontSize: 22,
-        fontWeight: FontWeight.w900,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final tablet = MediaQuery.sizeOf(context).width >= 720;
+    final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= 760;
+
+    final pagePadding = width < 360
+        ? 14.0
+        : wide
+        ? 28.0
+        : 18.0;
 
     return Scaffold(
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.auto_stories_outlined),
-            label: 'Recall',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            label: 'Planner',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            label: 'Profile',
-          ),
-        ],
-        onDestinationSelected: (index) {
-          if (index == 0) return;
-          const names = [
-            'Home',
-            'Smart Recall',
-            'Study Planner',
-            'Profile',
-          ];
-          _comingSoon(names[index]);
-        },
-      ),
+      bottomNavigationBar: wide
+          ? null
+          : NavigationBar(
+              selectedIndex: 0,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_rounded),
+                  label: 'Home',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.menu_book_outlined),
+                  label: 'Courses',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.calendar_month_outlined),
+                  label: 'Timetable',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.auto_stories_outlined),
+                  label: 'Recall',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline_rounded),
+                  label: 'Profile',
+                ),
+              ],
+              onDestinationSelected: (index) {
+                if (index == 1) {
+                  openScreen(const CoursesScreen());
+                } else if (index == 2) {
+                  openScreen(const LectureTimetableScreen());
+                } else if (index == 3) {
+                  comingSoon('Smart Recall');
+                } else if (index == 4) {
+                  openScreen(ProfileScreen(
+                    appearance: widget.appearance,
+                    onAppearanceChanged: widget.onAppearanceChanged,
+                    onLogout: widget.onLogout,
+                  ));
+                }
+              },
+            ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1120),
-            child: ListView(
-              padding: EdgeInsets.symmetric(
-                horizontal: tablet ? 32 : 18,
-                vertical: 22,
-              ),
-              children: [
-                _header(),
-                const SizedBox(height: 27),
-                Text(
-                  'Make today count.',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 31,
-                    fontWeight: FontWeight.w900,
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: RefreshIndicator(
+              onRefresh: () async {
+                refreshSummary();
+              },
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(pagePadding, 22, pagePadding, 32),
+                children: [
+                  buildHeader(),
+                  const SizedBox(height: 27),
+                  Text(
+                    'Your academic space',
+                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                      fontSize: width < 360 ? 26 : 30,
+                      letterSpacing: -0.7,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  'Small steps. Stronger results.',
-                  style: TextStyle(
-                    color: _muted,
-                    fontSize: 16,
+                  const SizedBox(height: 6),
+                  Text(
+                    'Don\'t just read. Remember what you study.',
+                    style: TextStyle(color: muted, fontSize: 14),
                   ),
-                ),
-                const SizedBox(height: 23),
-                _hero(),
-                const SizedBox(height: 21),
-                if (tablet)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: _dailyMissions(),
-                      ),
-                      const SizedBox(width: 18),
-                      Expanded(
-                        flex: 2,
-                        child: _momentum(),
-                      ),
-                    ],
-                  )
-                else
-                  _dailyMissions(),
-                const SizedBox(height: 20),
-                _campusPulse(),
-                if (!tablet) ...[
-                  const SizedBox(height: 20),
-                  _momentum(),
+                  const SizedBox(height: 23),
+                  if (wide)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 6, child: buildHero()),
+                        const SizedBox(width: 18),
+                        Expanded(flex: 5, child: buildStats()),
+                      ],
+                    )
+                  else ...[
+                    buildHero(),
+                    const SizedBox(height: 17),
+                    buildStats(),
+                  ],
+                  const SizedBox(height: 28),
+                  sectionHeading(
+                    'Your academic toolkit',
+                    'Everything in one place',
+                  ),
+                  const SizedBox(height: 14),
+                  buildToolkit(wide),
+                  const SizedBox(height: 28),
+                  if (wide)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: buildMissions()),
+                        const SizedBox(width: 18),
+                        Expanded(child: buildPulse()),
+                      ],
+                    )
+                  else ...[
+                    buildMissions(),
+                    const SizedBox(height: 18),
+                    buildPulse(),
+                  ],
+                  const SizedBox(height: 18),
                 ],
-                const SizedBox(height: 26),
-                _toolkit(tablet),
-                const SizedBox(height: 35),
-              ],
+              ),
             ),
           ),
         ),
@@ -272,21 +259,17 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _header() {
+  Widget buildHeader() {
     return Row(
       children: [
         Container(
-          width: 49,
-          height: 49,
+          height: 45,
+          width: 45,
           decoration: BoxDecoration(
-            color: _accent,
+            gradient: const LinearGradient(colors: [violet, Color(0xFF6C55E8)]),
             borderRadius: BorderRadius.circular(15),
           ),
-          child: const Icon(
-            Icons.auto_stories_rounded,
-            color: Colors.white,
-            size: 27,
-          ),
+          child: Padding(padding: const EdgeInsets.all(4), child: Image.asset('assets/branding/campusos_icon_transparent.png',fit:BoxFit.contain)),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -296,635 +279,590 @@ class _HomeScreenState extends State<HomeScreen>
               Text(
                 'CampusOS',
                 style: TextStyle(
-                  color: _ink,
-                  fontSize: 23,
+                  color: foreground,
+                  fontSize: 19,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               Text(
-                'STUDY SMARTER. GO FURTHER.',
-                style: TextStyle(
-                  color: _muted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
+                'Your study companion',
+                style: TextStyle(color: muted, fontSize: 12),
               ),
             ],
           ),
         ),
         IconButton.filledTonal(
-          tooltip: 'Change appearance',
-          onPressed: _appearanceSheet,
-          icon: Icon(
-            _dark
-                ? Icons.nights_stay_rounded
-                : Icons.wb_sunny_outlined,
-          ),
+          tooltip: 'Appearance',
+          onPressed: showAppearance,
+          icon: const Icon(Icons.palette_outlined),
         ),
+        const SizedBox(width: 5),
         IconButton(
           tooltip: 'Notifications',
-          onPressed: () => _comingSoon('Notifications'),
-          icon: const Icon(
-            Icons.notifications_none_rounded,
-          ),
+          onPressed: () => comingSoon('Notifications'),
+          icon: const Icon(Icons.notifications_none_rounded),
         ),
       ],
     );
   }
 
-  Widget _hero() {
-    final reducedMotion =
-        MediaQuery.disableAnimationsOf(context);
+  Widget buildHero() {
+    final progress = completed.length / missions.length;
 
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        final movement = reducedMotion
-            ? 0.0
-            : math.sin(_animation.value * math.pi * 2) * 6;
-
-        return Container(
-          constraints: const BoxConstraints(minHeight: 275),
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: _dark
-                  ? [
-                      const Color(0xFF514784),
-                      const Color(0xFF373050),
-                    ]
-                  : [
-                      const Color(0xFF917EFF),
-                      const Color(0xFF6C55E8),
-                      const Color(0xFF4833B7),
-                    ],
-            ),
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                top: 55 + movement,
-                right: 8,
-                child: Transform.rotate(
-                  angle: -0.15,
-                  child: Container(
-                    width: 95,
-                    height: 95,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: const Icon(
-                      Icons.menu_book_rounded,
-                      color: Color(0xFFA8F0D0),
-                      size: 55,
-                    ),
-                  ),
-                ),
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(25),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFAE79F4), Color(0xFF8049DE), Color(0xFF5930B3)],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -55,
+            top: -75,
+            child: Container(
+              width: 195,
+              height: 195,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.09),
               ),
-              Padding(
-                padding: const EdgeInsets.all(25),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+          Positioned(
+            left: -35,
+            bottom: -95,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(21),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
                   children: [
-                    const Text(
-                      '✦  YOUR STUDY SPACE',
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 17,
+                      color: Colors.white,
+                    ),
+                    SizedBox(width: 7),
+                    Text(
+                      'MY STUDY PLAN',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
                         fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        letterSpacing: 1.1,
                       ),
-                    ),
-                    const SizedBox(height: 30),
-                    const Text(
-                      'Don\'t just read.\nRemember what\nyou study.',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        height: 1.15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 21),
-                    FilledButton.icon(
-                      onPressed: () =>
-                          _comingSoon('Quick Study'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFFA8F0D0),
-                        foregroundColor:
-                            const Color(0xFF202037),
-                      ),
-                      icon: const Icon(
-                        Icons.play_arrow_rounded,
-                      ),
-                      label: const Text('Start studying'),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 21),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Keep the\nmomentum.',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 27,
+                              height: 1.13,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '${completed.length} of ${missions.length} preview missions',
+                            style: const TextStyle(
+                              color: Color(0xFFF0E8FF),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 86,
+                      height: 86,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox.expand(
+                            child: CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 9,
+                              strokeCap: StrokeCap.round,
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.25,
+                              ),
+                              color: mint,
+                            ),
+                          ),
+                          Text(
+                            '${(progress * 100).round()}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 22,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 21),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => comingSoon('Quick Study'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: mint,
+                      foregroundColor: const Color(0xFF202037),
+                    ),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Start studying'),
+                  ),
+                ),
+                const SizedBox(height: 9),
+                const Text(
+                  'Preview only · Mission progress is not saved',
+                  style: TextStyle(color: Color(0xFFEDE2FF), fontSize: 11),
+                ),
+              ],
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildStats() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 12.0;
+
+        final tileWidth = (constraints.maxWidth - gap) / 2;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            SizedBox(
+              width: tileWidth,
+              child: buildStat(
+                Icons.menu_book_rounded,
+                'Courses',
+                '$courseCount',
+                'Registered',
+                const Color(0xFFAF8BFF),
+              ),
+            ),
+            SizedBox(
+              width: tileWidth,
+              child: buildStat(
+                Icons.school_rounded,
+                'Credit units',
+                '$totalUnits',
+                'This semester',
+                const Color(0xFFFFD27B),
+              ),
+            ),
+            SizedBox(
+              width: tileWidth,
+              child: buildStat(
+                Icons.calendar_month_rounded,
+                'Lectures',
+                '$lectureCount',
+                'Weekly schedule',
+                const Color(0xFFA8F0D0),
+              ),
+            ),
+            SizedBox(
+              width: tileWidth,
+              child: buildStat(
+                Icons.psychology_rounded,
+                'Smart Recall',
+                '—',
+                'Coming soon',
+                const Color(0xFFFF9EAC),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _dailyMissions() {
-    final percentage = (_progress * 100).round();
-
-    return _card(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _heading('Your daily mission'),
-          const SizedBox(height: 8),
-          Text(
-            'Every completed task moves you forward.',
-            style: TextStyle(
-              color: _muted,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              SizedBox(
-                width: 90,
-                height: 90,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox.expand(
-                      child: CircularProgressIndicator(
-                        value: _progress,
-                        strokeWidth: 8,
-                        strokeCap: StrokeCap.round,
-                        backgroundColor: _soft,
-                        color: _accent,
-                      ),
-                    ),
-                    Text(
-                      '$percentage%',
-                      style: TextStyle(
-                        color: _ink,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Text(
-                  percentage == 100
-                      ? 'You did it! Every mission is complete.'
-                      : '${_missions.length - _completed.length} missions remaining today.',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          ...List.generate(_missions.length, (index) {
-            final checked = _completed.contains(index);
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: checked
-                    ? _accent.withValues(alpha: 0.12)
-                    : _soft,
-                borderRadius: BorderRadius.circular(15),
-                child: CheckboxListTile(
-                  value: checked,
-                  activeColor: _accent,
-                  controlAffinity:
-                      ListTileControlAffinity.leading,
-                  title: Text(
-                    _missions[index],
-                    style: TextStyle(
-                      color: checked ? _muted : _ink,
-                      fontSize: 15,
-                      height: 1.4,
-                      decoration: checked
-                          ? TextDecoration.lineThrough
-                          : null,
-                    ),
-                  ),
-                  onChanged: (value) {
-                    setState(() {
-                      if (value == true) {
-                        _completed.add(index);
-                      } else {
-                        _completed.remove(index);
-                      }
-                    });
-                  },
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: 5),
-          Text(
-            'Preview missions. Progress is not saved yet.',
-            style: TextStyle(
-              color: _muted,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _campusPulse() {
-    const periods = ['Today', 'This week', 'This month'];
-
-    return _card(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _heading('Campus Pulse'),
-          const SizedBox(height: 6),
-          Text(
-            'We grow better together.',
-            style: TextStyle(
-              color: _muted,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: List.generate(3, (index) {
-              final selected = _period == index;
-
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: index == 2 ? 0 : 7,
-                  ),
-                  child: Material(
-                    color: selected ? _accent : _soft,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        setState(() => _period = index);
-                      },
-                      child: Container(
-                        constraints:
-                            const BoxConstraints(minHeight: 48),
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.all(7),
-                        child: Text(
-                          periods[index],
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: selected
-                                ? Theme.of(context)
-                                    .colorScheme
-                                    .onPrimary
-                                : _ink,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(19),
-            decoration: BoxDecoration(
-              color: _soft,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.auto_graph_rounded,
-                  color: _accent,
-                  size: 29,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Campus Pulse is warming up',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 9),
-                Text(
-                  'Verified community goal-completion data for ${periods[_period].toLowerCase()} will appear when enough students opt in.',
-                  style: TextStyle(
-                    color: _muted,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          _milestone('Reached 100% of their goals'),
-          _milestone('Reached at least 90%'),
-          _milestone('Reached at least 50%'),
-          Text(
-            'No fabricated participation or progress statistics.',
-            style: TextStyle(
-              color: _muted,
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _milestone(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 7),
-              Text(
-                'Awaiting data',
-                style: TextStyle(
-                  color: _muted,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Container(
-            height: 8,
-            decoration: BoxDecoration(
-              color: _soft,
-              borderRadius: BorderRadius.circular(20),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _momentum() {
-    return _card(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _heading('Your momentum'),
-          const SizedBox(height: 8),
-          Text(
-            'Celebrate every step forward.',
-            style: TextStyle(
-              color: _muted,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _metric(
-                  Icons.local_fire_department_rounded,
-                  '—',
-                  'Study streak',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _metric(
-                  Icons.track_changes_rounded,
-                  '${(_progress * 100).round()}%',
-                  'Today\'s goals',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'Streaks activate when study history is connected.',
-            style: TextStyle(
-              color: _muted,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _metric(
+  Widget buildStat(
     IconData icon,
-    String value,
     String label,
+    String value,
+    String caption,
+    Color highlight,
   ) {
     return Container(
-      padding: const EdgeInsets.all(15),
+      constraints: const BoxConstraints(minHeight: 146),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _soft,
-        borderRadius: BorderRadius.circular(17),
+        color: panel,
+        borderRadius: BorderRadius.circular(21),
+        border: Border.all(color: accent.withValues(alpha: 0.09)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: _accent, size: 25),
-          const SizedBox(height: 13),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: highlight.withValues(alpha: isDark ? 0.16 : 0.20),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(icon, color: isDark ? highlight : accent, size: 20),
+          ),
+          const SizedBox(height: 12),
           Text(
             value,
             style: TextStyle(
-              color: _ink,
-              fontSize: 25,
+              color: foreground,
+              fontSize: 27,
               fontWeight: FontWeight.w900,
+              height: 1,
             ),
           ),
           const SizedBox(height: 5),
           Text(
             label,
             style: TextStyle(
-              color: _muted,
+              color: foreground,
               fontSize: 13,
+              fontWeight: FontWeight.w800,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            caption,
+            style: TextStyle(color: muted, fontSize: 11),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
   }
 
-  Widget _toolkit(bool tablet) {
-    final tools = [
+  Widget sectionHeading(String title, String subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(subtitle, style: TextStyle(color: muted, fontSize: 13)),
+      ],
+    );
+  }
+
+  Widget buildToolkit(bool wide) {
+    final tools = <(IconData, String, String, int)>[
       (
         Icons.library_books_rounded,
         'My Courses',
-        'Manage your semester courses.',
+        'Manage registered courses',
         1,
       ),
       (
         Icons.calendar_month_rounded,
         'Lecture Timetable',
-        'Organize your weekly lectures.',
+        'Your weekly schedule',
         2,
       ),
-      (
-        Icons.auto_stories_rounded,
-        'Smart Recall',
-        'Remember more of what you study.',
-        0,
-      ),
-      (
-        Icons.note_alt_rounded,
-        'Lesson Notes',
-        'Keep your course notes together.',
-        0,
-      ),
-      (
-        Icons.event_note_rounded,
-        'Study Planner',
-        'Turn your goals into a plan.',
-        0,
-      ),
-      (
-        Icons.school_rounded,
-        'CGPA Simulator',
-        'See what grades you need.',
-        0,
-      ),
+      (Icons.auto_stories_rounded, 'Smart Recall', 'Coming soon', 0),
+      (Icons.note_alt_rounded, 'Lesson Notes', 'Coming soon', 0),
+      (Icons.event_note_rounded, 'Study Planner', 'Coming soon', 0),
+      (Icons.school_rounded, 'CGPA Simulator', 'Coming soon', 0),
     ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _heading('Your academic toolkit'),
-        const SizedBox(height: 17),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final columns = tablet ? 3 : 1;
-            const gap = 12.0;
-            final width = (constraints.maxWidth -
-                    gap * (columns - 1)) /
-                columns;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = wide ? 3 : 2;
+        const gap = 11.0;
 
-            return Wrap(
-              spacing: gap,
-              runSpacing: gap,
-              children: tools.map((tool) {
-                return SizedBox(
-                  width: width,
-                  child: Material(
-                    color: _surface,
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () {
-                        switch (tool.$4) {
-                          case 1:
-                            _open(const CoursesScreen());
-                            break;
-                          case 2:
-                            _open(
-                              const LectureTimetableScreen(),
-                            );
-                            break;
-                          default:
-                            _comingSoon(tool.$2);
-                        }
-                      },
-                      child: Container(
-                        constraints:
-                            const BoxConstraints(minHeight: 88),
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: _accent.withValues(
-                                  alpha: 0.12,
-                                ),
-                                borderRadius:
-                                    BorderRadius.circular(13),
-                              ),
-                              child: Icon(
-                                tool.$1,
-                                color: _accent,
-                                size: 25,
-                              ),
-                            ),
-                            const SizedBox(width: 13),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    tool.$2,
-                                    style: TextStyle(
-                                      color: _ink,
-                                      fontSize: 16,
-                                      fontWeight:
-                                          FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    tool.$3,
-                                    style: TextStyle(
-                                      color: _muted,
-                                      fontSize: 13,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              color: _muted,
-                            ),
-                          ],
+        final tileWidth =
+            (constraints.maxWidth - gap * (columns - 1)) / columns;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: tools.map((tool) {
+            return SizedBox(
+              width: tileWidth,
+              child: Material(
+                color: panel,
+                borderRadius: BorderRadius.circular(19),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(19),
+                  onTap: () {
+                    if (tool.$4 == 1) {
+                      openScreen(const CoursesScreen());
+                    } else if (tool.$4 == 2) {
+                      openScreen(const LectureTimetableScreen());
+                    } else {
+                      comingSoon(tool.$2);
+                    }
+                  },
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 123),
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 37,
+                          height: 37,
+                          decoration: BoxDecoration(
+                            color: subtle,
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(tool.$1, size: 21, color: accent),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        Text(
+                          tool.$2,
+                          style: TextStyle(
+                            color: foreground,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tool.$3,
+                          style: TextStyle(color: muted, fontSize: 11),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
-                );
-              }).toList(),
+                ),
+              ),
             );
-          },
-        ),
-      ],
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget buildMissions() {
+    final progress = completed.length / missions.length;
+
+    return panelBox(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Daily missions',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              Text(
+                '${(progress * 100).round()}%',
+                style: TextStyle(color: accent, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'A preview of your future study routine.',
+            style: TextStyle(color: muted, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          LinearProgressIndicator(
+            value: progress,
+            minHeight: 7,
+            borderRadius: BorderRadius.circular(8),
+            color: accent,
+            backgroundColor: subtle,
+          ),
+          const SizedBox(height: 13),
+          ...List.generate(
+            missions.length,
+            (index) => CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              dense: true,
+              value: completed.contains(index),
+              title: Text(
+                missions[index],
+                style: TextStyle(color: foreground, fontSize: 13),
+              ),
+              onChanged: (checked) {
+                setState(() {
+                  if (checked == true) {
+                    completed.add(index);
+                  } else {
+                    completed.remove(index);
+                  }
+                });
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Preview only · Resets when the app restarts',
+            style: TextStyle(color: muted, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPulse() {
+    const periods = ['Today', 'This week', 'This month'];
+
+    return panelBox(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_graph_rounded, color: accent),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Campus Pulse',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Community progress, without exposing individuals.',
+            style: TextStyle(color: muted, fontSize: 12),
+          ),
+          const SizedBox(height: 15),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(
+                periods.length,
+                (index) => Padding(
+                  padding: const EdgeInsets.only(right: 7),
+                  child: ChoiceChip(
+                    label: Text(periods[index]),
+                    selected: selectedPeriod == index,
+                    onSelected: (_) {
+                      setState(() {
+                        selectedPeriod = index;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: subtle,
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.groups_outlined, color: accent, size: 27),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Awaiting verified data',
+                        style: TextStyle(
+                          color: foreground,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Opt-in community statistics for ${periods[selectedPeriod].toLowerCase()} are not available yet.',
+                        style: TextStyle(color: muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 15),
+          pulseRow('100% of goals reached'),
+          pulseRow('At least 90% reached'),
+          pulseRow('At least 50% reached'),
+          Text(
+            'No invented statistics or participation counts.',
+            style: TextStyle(color: muted, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget pulseRow(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 13),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(color: foreground, fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '—',
+            style: TextStyle(color: muted, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget panelBox({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: panel,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: accent.withValues(alpha: 0.08)),
+      ),
+      child: child,
     );
   }
 }

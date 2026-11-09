@@ -1,4 +1,6 @@
+import 'cloud_sync.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'account_scope.dart';
 
 import '../models/campus_course.dart';
 
@@ -27,10 +29,21 @@ class CourseStorage {
     return box;
   }
 
+  static List<CampusCourse> allForSync() {
+    final result = <CampusCourse>[];
+    for (final entry in _database.toMap().entries) {
+      if (!AccountScope.owns(entry.key) || entry.value is! Map) continue;
+      try { result.add(CampusCourse.fromMap(Map<String, dynamic>.from(entry.value as Map))); } catch (_) {}
+    }
+    return result;
+  }
+
   static List<CampusCourse> getCourses() {
     final courses = <CampusCourse>[];
 
-    for (final value in _database.values) {
+    for (final entry in _database.toMap().entries) {
+      if (!AccountScope.owns(entry.key)) continue;
+      final value = entry.value;
       if (value is Map) {
         try {
           final course = CampusCourse.fromMap(
@@ -58,9 +71,10 @@ class CourseStorage {
     CampusCourse course,
   ) async {
     await _database.put(
-      course.id,
+      AccountScope.key(course.id),
       course.toMap(),
     );
+    CloudSync.queueSync();
   }
 
   static Future<void> deleteCourse(
@@ -72,9 +86,10 @@ class CourseStorage {
     );
 
     await _database.put(
-      course.id,
+      AccountScope.key(course.id),
       deleted.toMap(),
     );
+    CloudSync.queueSync();
   }
 
   static bool courseCodeExists(
