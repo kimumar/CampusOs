@@ -46,3 +46,24 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 *.hive
+# CampusOS local development files
+/.campusos_backups/
+/CampusOS_M02_Backup_*/
+/CampusOS_*.zip
+/m02_analyze_*.txt
+*.backup_*
+*.bak
+
+# Python local environment and database
+**/.venv/
+**/__pycache__/
+*.pyc
+**/db.sqlite3
+.env
+.env.*
+!.env.example
+
+# Flutter generated files
+**/.dart_tool/
+**/build/
+**/.flutter-plugins-dependencies
