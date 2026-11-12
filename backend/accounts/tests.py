@@ -1,5 +1,6 @@
 from datetime import timedelta
 from django.test import TestCase, override_settings
+from django.core.cache import cache
 from django.utils import timezone
 from .tokens import email_verification_token
 from django.utils.http import urlsafe_base64_encode
@@ -10,6 +11,8 @@ from .models import StudentUser
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class AccountTests(TestCase):
     def setUp(self):
+        # Isolate shared DRF throttle cache between unrelated test cases.
+        cache.clear()
         self.client = APIClient()
         self.email = "student@example.com"
         self.password = "ComplexPassword!42"
@@ -41,6 +44,7 @@ class AccountTests(TestCase):
         self.verify()
         user = StudentUser.objects.get(email=self.email)
         user.trial_started_at = timezone.now() - timedelta(days=8)
+        user.trial_expires_at = user.trial_started_at + timedelta(days=user.trial_duration_days)
         user.save()
         self.assertFalse(user.has_academic_access)
         self.assertTrue(hasattr(user, "student_profile"))

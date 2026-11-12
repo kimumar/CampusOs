@@ -67,3 +67,13 @@ Thumbs.db
 **/.dart_tool/
 **/build/
 **/.flutter-plugins-dependencies
+*.sqlite3-*
+*.p12
+*.apk
+*.zip
+*.safe_backup.bak
+*_Backup_*/
+*backup*
+*.env
+
+*.bak

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CampusOS Partner Dashboard</title>
+<style>body{font-family:system-ui;background:#171324;color:#f4eeff;margin:0}main{max-width:950px;padding:30px;margin:auto}.panel{background:#2a2340;border-radius:20px;padding:20px;margin:12px 0}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}.metric strong{font-size:1.8em}a{color:#cfb2ff;overflow-wrap:anywhere}select,button{padding:9px;border-radius:8px}header{display:flex;justify-content:space-between;align-items:center;gap:10px}small{color:#c9bddb}</style>
+</head><body><main><header><h1>CampusOS Partner Portal 💜</h1><form method="post" action="/partners/logout/">{% csrf_token %}<button>Log out</button></form></header>
+{% if partners %}<form method="get"><label>Administrator view: <select name="partner" onchange="this.form.submit()">
+{% for p in partners %}<option value="{{ p.pk }}" {% if p.pk == partner.pk %}selected{% endif %}>{{ p.university }} · {{ p.name }}</option>{% endfor %}
+</select></label></form>{% endif %}
+<div class="panel"><h2>{{ partner.name }}</h2><p>{{ partner.university }}</p><small>Only verified first payments earn commissions. Renewals do not.</small></div>
+<div class="metrics">
+<div class="panel metric">Registered referrals<br><strong>{{ referral_count }}</strong></div>
+<div class="panel metric">Verified first payments<br><strong>{{ verified_paid }}</strong></div>
+<div class="panel metric">Earned<br><strong>₦{{ earned }}</strong></div>
+<div class="panel metric">Paid out<br><strong>₦{{ paid }}</strong></div>
+<div class="panel metric">Outstanding<br><strong>₦{{ pending }}</strong></div>
+</div>
+<div class="panel"><h2>Your referral links</h2>{% for code, url in links %}<p><strong>{{ code }}</strong><br><a href="{{ url }}">{{ url }}</a></p>{% endfor %}</div>
+<small>Referral amounts shown are account-level totals, not student identities. Contact the CampusOS administrator about payout discrepancies.</small>
+</main></body></html>

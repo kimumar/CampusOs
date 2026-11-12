@@ -1,10 +1,11 @@
-import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../main.dart';
 import '../services/profile_storage.dart';
 import '../services/auth_api.dart';
 import '../services/cloud_sync.dart';
+import '../services/academic_notifications.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.appearance, required this.onAppearanceChanged, required this.onLogout});
@@ -85,7 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     items: ['100 Level','200 Level','300 Level','400 Level','500 Level','600 Level','ND 1','ND 2','HND 1','HND 2','Postgraduate','Other'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
                     onChanged: (v) => update(() => level = v ?? ''), validator: (v) => (v ?? '').isEmpty ? 'Study level is required' : null),
                   const SizedBox(height: 12),
-                  Text('Profile details sync to Django when online. Photos remain on this device for now.', style: TextStyle(color: Theme.of(sheetContext).colorScheme.onSurfaceVariant, fontSize: 12)),
+                  Text('Your profile updates across devices when connected. Your photo stays on this device.', style: TextStyle(color: Theme.of(sheetContext).colorScheme.onSurfaceVariant, fontSize: 12)),
                   const SizedBox(height: 18),
                 ]))),
                 Padding(padding: const EdgeInsets.fromLTRB(20, 10, 20, 16), child: SizedBox(width: double.infinity, child: FilledButton(
@@ -96,7 +97,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       final updated = StudentProfile(name: name.text.trim(), institutionType: institutionType, institution: institution.text.trim(), department: department.text.trim(), level: level, photo: photo);
                       await ProfileStorage.save(updated);
                       try { await AuthApi.saveProfile({'preferred_name':updated.name, 'institution_type':updated.institutionType, 'institution':updated.institution, 'department':updated.department, 'level':updated.level}); await ProfileStorage.markCloudSynced(); }
-                      catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved on this device. Cloud upload is pending; retry Data & sync.'))); }
+                      catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved on your device. Connect to the internet and tap Data & sync to back it up.'))); }
                       if (!mounted) return;
                       setState(() => _profile = updated);
                       if (sheetContext.mounted) Navigator.pop(sheetContext);
@@ -125,9 +126,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
       } else if (local.complete) {
         await AuthApi.saveProfile({'preferred_name':local.name,'institution_type':local.institutionType,'institution':local.institution,'department':local.department,'level':local.level});
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Academic data synchronized with Django.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Your study data is up to date.')));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sync could not finish. Local data is safe. Check your connection and retry.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not finish syncing. Your saved work is safe on this device. Please reconnect and try again.')));
+    }
+  }
+
+  Future<void> _inviteFriends() async {
+    try {
+      final details = await AuthApi.myInvitation();
+      if (!mounted) return;
+      final code = (details['code'] ?? '').toString();
+      final link = (details['link'] ?? '').toString();
+      await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+        title: const Text('Invite Friends 💜'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Invite classmates to CampusOS. There is no cash reward for student invitations.'),
+          const SizedBox(height: 16),
+          SelectableText('Your code: $code', style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          SelectableText(link),
+          const SizedBox(height: 8),
+          Text('Friends invited: ${details['invitation_count'] ?? 0}'),
+        ]),
+        actions: [
+          TextButton(onPressed: () async { await Clipboard.setData(ClipboardData(text: code)); }, child: const Text('Copy code')),
+          TextButton(onPressed: () async { await Clipboard.setData(ClipboardData(text: link)); }, child: const Text('Copy link')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Done')),
+        ],
+      ));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to the internet to view your invitation link.')));
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final current = TextEditingController();
+    final next = TextEditingController();
+    final confirmation = TextEditingController();
+    try {
+      if (!mounted) return;
+      bool saving = false;
+      String? error;
+      await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, update) {
+          return AlertDialog(
+            title: const Text('Change password'),
+            content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('Choose a strong password. You will need your current password to make this change.'),
+              TextField(controller: current, obscureText: true, decoration: const InputDecoration(labelText: 'Current password')),
+              TextField(controller: next, obscureText: true, decoration: const InputDecoration(labelText: 'New password')),
+              TextField(controller: confirmation, obscureText: true, decoration: const InputDecoration(labelText: 'Confirm new password')),
+              if (error != null) Text(error!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error)),
+            ])),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+              FilledButton(onPressed: saving ? null : () async {
+                if (next.text != confirmation.text) { update(() => error = 'New passwords do not match.'); return; }
+                update(() { saving = true; error = null; });
+                try {
+                  await AuthApi.changePassword(current.text, next.text);
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed successfully.')));
+                } catch (e) {
+                  if (dialogContext.mounted) update(() => error = e.toString().replaceFirst('Exception: ', ''));
+                } finally {
+                  if (dialogContext.mounted) update(() => saving = false);
+                }
+              }, child: Text(saving ? 'Saving…' : 'Change password')),
+            ],
+          );
+        },
+      ));
+    } finally {
+      // Wait until the dialog exit animation finishes before disposing its fields.
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      current.dispose(); next.dispose(); confirmation.dispose();
     }
   }
 
@@ -142,6 +216,113 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _notReady(String title) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$title is coming soon')));
+  Future<void> _notificationPreferences() async {
+    final previous = AcademicNotifications.enabled;
+    final enabled = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Gentle reminders'),
+      content: Text(previous
+        ? 'Reminders are on. Turn them off? You can re-enable them anytime.'
+        : 'Enable local lecture, deadline and study reminders? Alerts are limited to daytime hours and can work offline.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, !previous),
+          child: Text(previous ? 'Turn off' : 'Enable reminders')),
+      ],
+    ));
+    if (enabled == null) return;
+    await AcademicNotifications.setEnabled(enabled);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pulsePreferences() async {
+    if (!mounted) return;
+    await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Campus Pulse privacy'),
+      content: const Text('Campus Pulse uses aggregate study-mission completion totals from all eligible students. Student names, notes and individual study records are not displayed. You can view your private academic details only in your own account.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext),
+        child: const Text('Understood'))],
+    ));
+  }
+  Future<void> _openSupport() async {
+    final pageMessenger = ScaffoldMessenger.of(context);
+    final controller = TextEditingController();
+    var category = 'bug';
+    var sending = false;
+    String? error;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => StatefulBuilder(builder: (sheetContext, update) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * .9),
+              child: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 22), shrinkWrap: true, children: [
+                Text('Help & Support', style: Theme.of(sheetContext).textTheme.headlineSmall),
+                const SizedBox(height: 10),
+                const Text('FAQ · Your notes are kept locally for offline use. Sign in with the same account and use Data & sync when online. Never clear site data before making a backup.'),
+                const SizedBox(height: 10),
+                const Text('Payment help · Do not share bank details or passwords in support messages. Contact support about any payment discrepancy.'),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: category,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'What do you need help with?'),
+                  items: const [
+                    DropdownMenuItem(value: 'bug', child: Text('Report a problem')),
+                    DropdownMenuItem(value: 'payment', child: Text('Payment help')),
+                    DropdownMenuItem(value: 'privacy', child: Text('Privacy & account')),
+                    DropdownMenuItem(value: 'general', child: Text('General question')),
+                  ],
+                  onChanged: sending ? null : (value) => update(() => category = value ?? 'bug'),
+                ),
+                const SizedBox(height: 12),
+                TextField(controller: controller, minLines: 3, maxLines: 7, maxLength: 1500,
+                  decoration: const InputDecoration(labelText: 'Describe the issue', border: OutlineInputBorder())),
+                if (error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(error!, style: TextStyle(color: Theme.of(sheetContext).colorScheme.error))),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: sending ? null : () async {
+                    if (controller.text.trim().length < 10) {
+                      update(() => error = 'Please provide at least 10 characters.');
+                      return;
+                    }
+                    update(() { sending = true; error = null; });
+                    try {
+                      await AuthApi.submitSupportTicket(category, controller.text.trim());
+                      if (sheetContext.mounted) {
+                        Navigator.pop(sheetContext);
+                        pageMessenger.showSnackBar(
+                          const SnackBar(content: Text('Your support request was received.')));
+                      }
+                    } catch (_) {
+                      if (sheetContext.mounted) {
+                        update(() => error =
+                          'Could not send. Check the internet connection and try again; your message remains here.');
+                      }
+                    } finally {
+                      if (sheetContext.mounted) {
+                        update(() => sending = false);
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.send_outlined),
+                  label: Text(sending ? 'Sending…' : 'Send support request'),
+                ),
+              ]),
+            ),
+          ),
+        )),
+      );
+    } finally {
+      // Prevent the outgoing sheet from rebuilding with a disposed controller.
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      controller.dispose();
+    }
+  }
   void _appearance() {
     showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (sheetContext) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       for (final option in const [CampusAppearance.system, CampusAppearance.light, CampusAppearance.dark, CampusAppearance.nightComfort])
@@ -187,12 +368,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 14),
           Card(child: Column(children: [
             const ListTile(title: Text('Preferences & account', style: TextStyle(fontWeight: FontWeight.bold))),
+            _setting(Icons.card_giftcard_rounded, 'Invite Friends', 'Your personal code and invitation link', _inviteFriends),
+            _setting(Icons.lock_outline_rounded, 'Change Password', 'Secure your CampusOS account', _changePassword),
             _setting(Icons.palette_outlined, 'Appearance', 'Light, Dark, Night Comfort, Follow device', _appearance),
-            _setting(Icons.notifications_none_rounded, 'Reminders', 'Coming soon', () => _notReady('Reminders')),
-            _setting(Icons.shield_outlined, 'Privacy', 'Community participation will be opt-in', () => _notReady('Privacy controls')),
-            _setting(Icons.workspace_premium_outlined, 'CampusOS Premium', 'Plans and trial details coming soon', () => _notReady('Subscriptions')),
-            _setting(Icons.cloud_outlined, 'Data & sync', 'Tap to synchronize courses, timetable and profile with Django', _syncNow),
-            _setting(Icons.help_outline_rounded, 'Help & feedback', 'Coming soon', () => _notReady('Help & feedback')),
+            _setting(Icons.notifications_none_rounded, 'Reminders',
+              AcademicNotifications.enabled ? 'Gentle reminders enabled' : 'Off · tap to enable', _notificationPreferences),
+            _setting(Icons.shield_outlined, 'Campus Pulse privacy',
+              'Aggregate progress · learn how it works', _pulsePreferences),
+            _setting(Icons.workspace_premium_outlined, 'CampusOS Premium', '₦700 monthly · ₦2,000 quarterly · 3-day trial',
+              () => _notReady('Payment activation')),
+            _setting(Icons.cloud_outlined, 'Data & sync', 'Back up your study progress when connected', _syncNow),
+            _setting(Icons.help_outline_rounded, 'Help & Support', 'FAQs, report a problem, payment and privacy help', _openSupport),
             const Divider(),
             ListTile(leading: Icon(Icons.logout_rounded, color: Theme.of(context).colorScheme.error), title: Text('Log out', style: TextStyle(fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.error)), subtitle: const Text('Sign out of this account'), onTap: _confirmLogout),
           ])),

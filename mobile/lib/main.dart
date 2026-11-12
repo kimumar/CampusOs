@@ -1,3 +1,4 @@
+import 'services/study_draft_storage.dart';
 import 'package:flutter/material.dart';
 
 import 'core/app_theme.dart';
@@ -8,6 +9,11 @@ import 'services/course_storage.dart';
 import 'services/lecture_storage.dart';
 import 'services/profile_storage.dart';
 import 'services/cloud_sync.dart';
+import 'services/check_in_storage.dart';
+import 'services/study_mission_storage.dart';
+import 'services/academic_notifications.dart';
+import 'screens/restricted_campus_home.dart';
+import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +22,10 @@ Future<void> main() async {
     await CourseStorage.initialize();
     await LectureStorage.initialize();
     await ProfileStorage.initialize();
+    await StudyMissionStorage.initialize();
+    await CheckInStorage.initialize();
+    await StudyDraftStorage.initialize();
+    await AcademicNotifications.initialize();
   } catch (error, stackTrace) {
     debugPrint('CampusOS storage error: $error');
     debugPrintStack(stackTrace: stackTrace);
@@ -80,6 +90,7 @@ class CampusOSApp extends StatefulWidget {
 }
 
 class _CampusOSAppState extends State<CampusOSApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   CampusAppearance _appearance = CampusAppearance.system;
   bool _ready = false;
   bool _authenticated = false;
@@ -93,6 +104,9 @@ class _CampusOSAppState extends State<CampusOSApp> {
     });
   }
   Future<void> _logout() async {
+    _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    await AcademicNotifications.cancel();
+    await AcademicNotifications.clearHistory();
     CloudSync.stop();
     await AuthApi.logout();
     if(mounted) setState(() => _authenticated=false);
@@ -133,6 +147,7 @@ class _CampusOSAppState extends State<CampusOSApp> {
     }
 
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'CampusOS',
       debugShowCheckedModeBanner: false,
       theme: selectedTheme,
@@ -155,23 +170,37 @@ class CampusAccessGate extends StatefulWidget {
 }
 class _CampusAccessGateState extends State<CampusAccessGate> with WidgetsBindingObserver {
   bool checking=true; String error='';
-  @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);check();}
-  @override void dispose(){WidgetsBinding.instance.removeObserver(this);super.dispose();}
+  Timer? _expiryTicker;
+  @override void initState(){
+    super.initState();WidgetsBinding.instance.addObserver(this);check();
+    _expiryTicker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted || checking) return;
+      if (!AuthApi.hasUsableAccess) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        AcademicNotifications.cancel();
+        setState(() {});
+      }
+    });
+  }
+  @override void dispose(){_expiryTicker?.cancel();WidgetsBinding.instance.removeObserver(this);super.dispose();}
   @override void didChangeAppLifecycleState(AppLifecycleState state){if(state==AppLifecycleState.resumed)check();}
   Future<void> check() async {
     if(mounted)setState(() {checking=true;error='';});
-    try {await AuthApi.loadMe();}catch(e){error='Unable to verify account access. Connect to the internet and retry.';}
-    if(error.isEmpty && AuthApi.academicAccess) CloudSync.queueSync();
+    try {await AuthApi.loadMe();}catch(e){
+      if (!await AuthApi.tryOfflineAccess()) {
+        error='Unable to verify account access. Connect to the internet and retry.';
+      }
+    }
+    if(error.isEmpty && AuthApi.hasUsableAccess) {
+      CloudSync.queueSync();
+      AcademicNotifications.reschedule();
+    }
     if(mounted)setState(()=>checking=false);
   }
   @override Widget build(BuildContext context){
     if(checking)return const Scaffold(body:Center(child:CircularProgressIndicator()));
-    if(error.isNotEmpty||!AuthApi.academicAccess){
-      return Scaffold(appBar:AppBar(title:const Text('CampusOS access')),body:Center(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
-        Text(error.isNotEmpty?error:'Your trial has expired or your subscription is inactive.',textAlign:TextAlign.center),
-        const SizedBox(height:18),FilledButton(onPressed:check,child:const Text('Check access again')),
-        TextButton(onPressed:widget.onLogout,child:const Text('Log out')),
-      ]))));
+    if(error.isNotEmpty||!AuthApi.hasUsableAccess){
+      return RestrictedCampusHome(onRetry:check,onLogout:widget.onLogout);
     }
     return HomeScreen(appearance:widget.appearance,onAppearanceChanged:widget.onAppearanceChanged,onLogout:widget.onLogout);
   }

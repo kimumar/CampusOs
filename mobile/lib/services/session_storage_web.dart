@@ -6,4 +6,8 @@ class SessionStorage {
   static Future<void> writeRefresh(String? token) async { _refresh = token; }
   static Future<String?> readRefresh() async => _refresh;
   static Future<void> clearRefresh() async { _refresh = null; }
+  // Insecure HTTP browser preview never persists account claims or credentials.
+  static Future<void> writeVerifiedAccount(Map<String, dynamic> _) async {}
+  static Future<Map<String, dynamic>?> readVerifiedAccount() async => null;
+  static Future<void> clearVerifiedAccount() async {}
 }

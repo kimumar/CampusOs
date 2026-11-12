@@ -12,7 +12,7 @@ ALLOWED_HOSTS = [x.strip() for x in os.environ.get("DJANGO_ALLOWED_HOSTS", "127.
 INSTALLED_APPS = [
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes", "django.contrib.sessions",
     "django.contrib.messages", "django.contrib.staticfiles",
-    "rest_framework", "corsheaders", "accounts",
+    "rest_framework", "corsheaders", "accounts", "campus_pulse",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -44,7 +44,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle","rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon":"20/hour","user":"200/hour"},
+    "DEFAULT_THROTTLE_RATES": {"anon":"20/hour","user":"200/hour", "support":"5/hour"},
 }
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
@@ -65,10 +65,13 @@ EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:61653").rstrip("/")
+PASSWORD_RESET_PUBLIC_BASE_URL = os.environ.get("PASSWORD_RESET_PUBLIC_BASE_URL", "").rstrip("/")
 USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+CAMPUSOS_PULSE_SUBSCRIPTION_CHECK = "accounts.pulse_access.is_eligible"
+CAMPUSOS_PULSE_SUBSCRIBERS_QUERYSET = "accounts.pulse_access.eligible_users"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

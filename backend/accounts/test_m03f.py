@@ -5,8 +5,12 @@ from .models import StudentUser, AcademicRecord
 
 class AcademicSyncTests(TestCase):
     def setUp(self):
-        self.a = StudentUser.objects.create_user(email="a@school.test", password="SafePassword123!")
-        self.b = StudentUser.objects.create_user(email="b@school.test", password="SafePassword123!")
+        self.a = StudentUser.objects.create_user(email="a@school.test", password="SafePassword123!",
+                                              email_verified=True, trial_started_at=timezone.now(),
+                                              trial_expires_at=timezone.now()+__import__("datetime").timedelta(days=3))
+        self.b = StudentUser.objects.create_user(email="b@school.test", password="SafePassword123!",
+                                              email_verified=True, trial_started_at=timezone.now(),
+                                              trial_expires_at=timezone.now()+__import__("datetime").timedelta(days=3))
         self.client = APIClient()
     def test_account_isolation_and_delete_tombstone(self):
         self.client.force_authenticate(user=self.a)

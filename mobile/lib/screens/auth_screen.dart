@@ -9,11 +9,17 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final email = TextEditingController(), password = TextEditingController(), confirm = TextEditingController();
   final uid = TextEditingController(), token = TextEditingController(), code = TextEditingController();
+  final referral = TextEditingController();
   String mode = 'login', notice = '';
   bool busy = false, showPassword = false;
   @override void initState() {
     super.initState();
     final url = Uri.base;
+    final incomingRef = url.queryParameters['ref'];
+    if (incomingRef != null && incomingRef.trim().isNotEmpty) {
+      referral.text = incomingRef.trim().toUpperCase();
+      mode = 'register';
+    }
     final action = url.pathSegments.isEmpty ? '' : url.pathSegments.last;
     if (action == 'verify-email' || action == 'reset-password') {
       mode = action == 'verify-email' ? 'verify' : 'reset';
@@ -21,7 +27,7 @@ class _AuthScreenState extends State<AuthScreen> {
       token.text = url.queryParameters['token'] ?? '';
     }
   }
-  @override void dispose() { for (final c in [email,password,confirm,uid,token,code]) { c.dispose(); } super.dispose(); }
+  @override void dispose() { for (final c in [email,password,confirm,uid,token,code,referral]) { c.dispose(); } super.dispose(); }
   bool get passwordValid => password.text.length >= 10 && RegExp(r'[A-Z]').hasMatch(password.text) && RegExp(r'[a-z]').hasMatch(password.text) && RegExp(r'[0-9]').hasMatch(password.text) && RegExp(r'[^A-Za-z0-9]').hasMatch(password.text);
   void switchTo(String next) => setState(() { mode=next; notice=''; password.clear(); confirm.clear(); });
   Future<void> submit() async {
@@ -33,7 +39,7 @@ class _AuthScreenState extends State<AuthScreen> {
       String message='';
       switch (mode) {
         case 'login': await AuthApi.login(email.text.trim(),password.text); if(mounted)widget.onAuthenticated(); return;
-        case 'register': message=await AuthApi.register(email.text.trim(),password.text); break;
+        case 'register': message=await AuthApi.register(email.text.trim(),password.text, referralCode:referral.text); break;
         case 'verify': message=await AuthApi.verifyCode(email.text.trim(),code.text.trim()); break;
         case 'resend': message=await AuthApi.resend(email.text.trim()); break;
         case 'forgot': message=await AuthApi.resetRequest(email.text.trim()); break;
@@ -57,6 +63,7 @@ class _AuthScreenState extends State<AuthScreen> {
       const SizedBox(height:44),Text(title,style:const TextStyle(fontSize:26,fontWeight:FontWeight.w700,color:Colors.white)),
       const SizedBox(height:6),Text(subtitle,style:const TextStyle(color:Color(0xFFBAB3CE))),const SizedBox(height:28),
       if(needsEmail||mode=='verify')field(email,'Email address',keyboard:TextInputType.emailAddress),
+      if(registration)field(referral,'University TV referral code (optional)'),
       if(mode=='verify')field(code,'6-digit verification code',keyboard:TextInputType.number),
       if(needsToken)...[field(uid,'Verification UID'),field(token,'Verification token')],
       if(login||registration||reset)field(password,reset?'New password':'Password',secret:true),

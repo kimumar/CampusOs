@@ -7,9 +7,35 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import AcademicRecord
 
+# User-owned original uploads MUST stay on the phone. Never accept binary
+# documents or image/file fields inside the academic-record JSON envelope.
+_FORBIDDEN_KEYS = ('image_bytes', 'image_data', 'pdf_bytes', 'pdf_data',
+                   'file_bytes', 'file_data', 'attachment', 'attachments',
+                   'base64', 'binary', 'file_path', 'image_path', 'pdf_path')
+
+def _contains_file_payload(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).strip().lower()
+            if any(part in normalized for part in _FORBIDDEN_KEYS):
+                return True
+            if _contains_file_payload(child):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_file_payload(child) for child in value)
+    elif isinstance(value, str):
+        if value.startswith(('data:image/', 'data:application/pdf;', '%PDF-')):
+            return True
+    return False
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def academic_records(request):
+    # UI restrictions alone are insufficient: the server must reject direct API
+    # reads/writes after a trial or subscription expires. Records remain stored.
+    if not request.user.has_academic_access:
+        return Response({"detail": "Active academic access required."}, status=403)
     if request.method == "POST":
         records = request.data.get("records")
         if not isinstance(records, list) or len(records) > 100:
@@ -21,8 +47,13 @@ def academic_records(request):
             kind = item.get("kind")
             rid = item.get("id")
             payload = item.get("payload")
-            if kind not in ("course", "lecture") or not isinstance(rid, str) or not 1 <= len(rid) <= 100 or not isinstance(payload, dict) or len(str(payload)) > 16000:
+            # Text-only notes and resumable recall sessions are account-owned,
+            # bounded JSON records. Original images and PDFs never sync here.
+            max_payload = 65000 if kind in ("lesson_note", "recall_session") else 16000
+            if kind not in ("course", "lecture", "lesson_note", "recall_session") or not isinstance(rid, str) or not 1 <= len(rid) <= 100 or not isinstance(payload, dict) or len(str(payload)) > max_payload:
                 return Response({"detail": "Invalid academic record."}, status=400)
+            if _contains_file_payload(payload):
+                return Response({"detail": "Original documents and images stay on your device."}, status=400)
             if payload.get("id") != rid:
                 return Response({"detail": "Record ID mismatch."}, status=400)
             timestamp = parse_datetime(str(payload.get("updated_at", "")))

@@ -93,3 +93,21 @@ CampusOS is an offline-first academic productivity SaaS for Nigerian university 
 - No existing code deleted or overwritten.
 - No Git history reset.
 - Application functionality not modified.
+# Milestone 011 — Personalized dashboard and reliability follow-up (2026-11-11)
+
+- Reduced server-enforced trial from seven to three days; adjusted Campus Pulse eligibility and confirmation messages.
+- Added a personalized home summary based on the student's saved profile, today's lecture schedule, real deadline records and study missions. No fabricated scheduling or AI API cost.
+- Corrected home deadline count to use calendar days (including deadlines due earlier today) and refresh after returning from the planner.
+- Added root navigation unwinding before logout so the login screen can replace nested pages.
+- Corrected support confirmation to use the page-level messenger after closing the support sheet.
+- Routed password reset email through the existing transactional Brevo delivery mechanism, adding an explicit 503 response on delivery failure and regression tests.
+- Verification limits: Django tests could not run (Django not installed here); Flutter analyze/build could not run (Flutter SDK not installed). The device red-screen assertion, live Brevo delivery, reset-link handling on a physical Android device and release APK build **remain unverified**.
+- Deployment prerequisite: configure a verified transactional email sender and `BREVO_API_KEY`; `FRONTEND_URL` must point to a real working reset page, not localhost. The existing Android app still needs a production-compatible email-link/deep-link flow before password resets are end-to-end usable.
+- Git commit: none. GitHub push: not performed.
+
+# Update 012 consolidated work — 2026-11-11
+
+- Consolidated the already-built app features with configurable 3-day trial and 24-hour offline access gating, Home/Profile restricted shell, free GPA calculator, Android-local personalized reminder scheduling, and opt-in Campus Pulse.
+- Added owner-only Django business settings, complimentary user entitlements, partner attribution and private self-service dashboards, customized referral codes and links, manual settlement verification, and one-time configurable referral rewards with immutable historical amount.
+- Added backend regression tests in `accounts/test_business_012.py` covering payout rate snapshots, repeat payments, zero/disabled commissions, complimentary students, unverified payments, alias links and partner privacy.
+- Verification: backend Python syntax compilation succeeded. Django runtime checks and test execution are blocked because Django is not installed here; Flutter/Dart also unavailable. Mandatory local verification steps and operational caveats in `README_UPDATE_012.md`.
